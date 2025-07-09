@@ -32,7 +32,7 @@ jobs:
           TODAY=$(date -u '+%Y-%m-%d')
 
           npx -y wrangler@latest d1 insights "$D1_DB_NAME" \
-            --json --timePeriod=31d \
+            --json --limit=9999 --timePeriod=1d \
             > "insights_${TODAY}.json"
 
        # 3. S3 업로드(동기화)
