@@ -1,43 +1,51 @@
-# .github/workflows/d1-insights-to-r2.yml
-name: Daily D1 Insights → R2
+# .github/workflows/d1-insights-to-s3.yml
+name: Daily D1 Insights → S3
+
 on:
   schedule:
-    - cron: '15 0 * * *'   # UTC 00:15 = 한국 09:15
-  workflow_dispatch:
+    - cron: '15 0 * * *'          # UTC 00:15 → KST 09:15
+  workflow_dispatch:              # 필요 시 수동 실행
 
 jobs:
   export_and_upload:
     runs-on: ubuntu-latest
+
+    #───────────────── 공통 환경변수 ─────────────────
     env:
-      # 기존 Secrets
+      # Cloudflare (기존 시크릿 그대로 사용)
       CF_API_TOKEN:    ${{ secrets.CF_API_TOKEN }}
       CF_ACCOUNT_ID:   ${{ secrets.CF_ACCOUNT_ID }}
-
-      # Wrangler용 새 이름
-      CLOUDFLARE_API_TOKEN:  ${{ secrets.CF_API_TOKEN }}
+      CLOUDFLARE_API_TOKEN:  ${{ secrets.CF_API_TOKEN }}   # Wrangler v3용 새 이름
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
 
-      D1_DB_NAME: ${{ secrets.D1_DB_NAME }}
+      D1_DB_NAME:      ${{ secrets.D1_DB_NAME }}
+
+      # AWS S3
+      AWS_ACCESS_KEY_ID:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_S3_BUCKET:         ${{ secrets.S3_BUCKET }}       # 예: my-backup-bucket
+      AWS_REGION:            ap-northeast-2                 # 필요 시 변경
+      SOURCE_DIR:            '.'                            # 업로드 대상
+      DEST_DIR:              'd1-insights/'                 # S3 버킷 내부 경로
 
     steps:
+      # 1. Wrangler 설치
       - name: Install Wrangler
         run: npm i -g wrangler@latest
 
-      - name: Export last-31 days insights
+      # 2. 31일치 인사이트 추출
+      - name: Export D1 insights (last 31 days)
         run: |
           set -euo pipefail
           TODAY=$(date -u '+%Y-%m-%d')
-
-          npx -y wrangler@latest d1 insights "$D1_DB_NAME" \
+          npx -y wrangler@latest \
+            --account-id "$CLOUDFLARE_ACCOUNT_ID" \   # 꼭 **앞**쪽에!
+            d1 insights "$D1_DB_NAME" \
             --json --timePeriod=31d \
             > "insights_${TODAY}.json"
 
-      - name: Upload to R2
-        uses: ryand56/r2-upload-action@v1.4
+      # 3. S3 업로드(동기화)
+      - name: Upload to S3
+        uses: jakejarvis/s3-sync-action@v0.5.1
         with:
-          r2-account-id:        ${{ secrets.CF_ACCOUNT_ID }}        # Cloudflare 계정 ID
-          r2-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}    # 재사용
-          r2-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}# 재사용
-          r2-bucket:            ${{ secrets.R2_BUCKET }}            # 버킷 이름
-          source-dir:           '.'
-          destination-dir:      'd1-insights/'
+          args: --follow-symlinks --exact-timestamps
