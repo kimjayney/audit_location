@@ -30,5 +30,3 @@ jobs:
             --json --timePeriod=31d \
             --account-id "$CLOUDFLARE_ACCOUNT_ID" \
             > "insights_${TODAY}.json"
-
-      # 이후 업로드 스텝(예: R2/S3) 그대로…
