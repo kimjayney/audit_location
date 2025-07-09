@@ -1,0 +1,33 @@
+name: Daily D1 Insights → S3
+on:
+  schedule:
+    - cron: '15 3 * * *'   
+  workflow_dispatch:       
+env:
+  CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+  CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+  D1_DB_NAME:   ${{ secrets.D1_DB_NAME }}
+jobs:
+  export-and-upload:
+    runs-on: ubuntu-latest
+    steps:
+      # 1) log extract
+      - name: Install Wrangler
+        run: npm i -g wrangler
+      - name: Export last-24h insights as JSON
+        run: |
+          YESTERDAY=$(date -u '+%Y-%m-%d')
+          wrangler d1 insights "$D1_DB_NAME" \
+            --json --timePeriod=1d \
+            > insights_$YESTERDAY.json
+      # 2) s3 upload
+      - uses: jakejarvis/s3-sync-action@v0.5.1
+        with:
+          args: --follow-symlinks --exact-timestamps
+        env:
+          AWS_S3_BUCKET: ${{ secrets.S3_BUCKET }}
+          AWS_REGION:    ap-northeast-2
+          AWS_ACCESS_KEY_ID:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          SOURCE_DIR: '.'            
+          DEST_DIR:   'd1-insights/' 
